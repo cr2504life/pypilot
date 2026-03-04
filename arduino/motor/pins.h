@@ -21,8 +21,8 @@
 
 #ifndef DISABLE_ENDSTOPS
   // Hardware endstops for the rudder position
-  #define FWD_FAULT_PIN 2 // use pin 7 for optional fault
-  #define REV_FAULT_PIN 3 // use pin 8 for optional fault
+  #define STBD_FAULT_PIN 2 // use pin 7 for optional fault
+  #define PORT_FAULT_PIN 3 // use pin 8 for optional fault
 #endif
 
 
@@ -60,6 +60,10 @@
   #define TFT_CS   10
   #define TFT_MOSI 11
   #define TFT_SCLK 13
+#else
+  // Define RS485 MODBUS pins
+  #define SW_RX_PIN 8  // D8
+  #define SW_TX_PIN 9  // D9
 #endif
 
 #endif

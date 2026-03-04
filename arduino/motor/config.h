@@ -114,19 +114,19 @@ enum {CONTROLLER_TEMP, MOTOR_TEMP};
  * BOARD TYPE
  */
 //#define BOARD_VNH2SP30 // defined if this board is used
-#define BOARD_IBT2_H_BRIDGE // defined if this board is used IBT-2 H-Bridge
+//#define BOARD_IBT2_H_BRIDGE // defined if this board is used IBT-2 H-Bridge
 //#define BOARD_RAW_H_BRIDGE // defined if a raw h-bridge is used that needs to be controlled directly
 
 /*
  * ATTACHED SENSORS
  */
-//#define DISABLE_TEMP_SENSE    // if no temp sensors avoid errors
-//#define DISABLE_VOLTAGE_SENSE // if no voltage sense
-//#define DISABLE_CURRENT_SENSE // if no motor current sensor is installed or used
+#define DISABLE_TEMP_SENSE    // if no temp sensors avoid errors
+#define DISABLE_VOLTAGE_SENSE // if no voltage sense
+#define DISABLE_CURRENT_SENSE // if no motor current sensor is installed or used
 //#define DISABLE_RUDDER_SENSE  // if no rudder sense
-#define DISABLE_ENDSTOPS // if no endstops are installed we won't have a forward and reverse faults
+//#define DISABLE_ENDSTOPS // if no endstops are installed we won't have a forward and reverse faults
 
-//#define DISABLE_DEBUGGING_DISPLAY // If a debugging TFT display is attached to the controller, comment this out
+#define DISABLE_DEBUGGING_DISPLAY // If a debugging TFT display is attached to the controller, comment this out
 #define USE_STEINHART_TEMP_SENSING // If you want to use the much slower Steinhart calculation
 
 /*

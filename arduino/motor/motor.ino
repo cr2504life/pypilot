@@ -36,14 +36,11 @@
 #include "crc.h"
 #include "adc_filtering.h"
 #include "status_display.h"
-/*
- * This program is meant to interface with pwm based motor controller either brushless or brushed, or a regular RC servo
- */
 
-/*
- ******************************** Global Variables *************************************
- */
+#include <SoftwareSerial.h> //debug
+SoftwareSerial SwSerial(SW_RX_PIN, SW_TX_PIN);
 
+ //******************************** Global Variables *************************************
 uint16_t flags = 0;
 uint8_t serialin, packet_count = 0;
 
@@ -72,14 +69,10 @@ uint32_t last_loop_voltage_millis = 0;
 uint32_t last_loop_current_millis = 0;
 uint32_t last_loop_temperature_millis = 0;
 
-/*
- * command_value is used throughout the program to hold the rudder motor PWM between 0 and 2000 with 0 being PWM off.
- */
+// command_value is used throughout the program to hold the rudder motor PWM between 0 and 2000 with 0 being PWM off.
 uint16_t command_value = 1000;
 
-/* 
- * command is from 0 to 2000 with 1000 being neutral 
- */
+// command is from 0 to 2000 with 1000 being neutral 
 uint16_t lastpos = 1000;
 
 void setup() // Must change completely
@@ -128,6 +121,7 @@ void setup() // Must change completely
     serialin = 0;
     // set up Serial library
     Serial.begin(38400);
+    SwSerial.begin(9600);
 
     set_sleep_mode(SLEEP_MODE_IDLE); // wait for serial
 
@@ -182,7 +176,7 @@ void engage() // Must change completely
     digitalWrite(ENABLE_PIN, HIGH); // Enable both half bridges
 #endif
 
-    position(1000); // Not sure why position 1000 is called.
+    command_serial(1000); 
     digitalWrite(ENGAGE_LED_PIN, HIGH); // status LED
     
     timeout = 0;
@@ -201,73 +195,90 @@ void engage() // Must change completely
 #ifndef DISABLE_DEBUGGING_DISPLAY
 
 #endif
-void update_command() // Will not be changed
+// void update_command() // Will not be changed
+// {
+//     int16_t speed_rate  = max_slew_speed;
+//     int16_t slow_rate   = max_slew_slow; // value of 20 is 1 second full range at 50hz
+//     uint16_t cur_value  =  lastpos;
+//     int16_t diff        = (int)command_value - (int)cur_value;
+
+//     // limit motor speed change to stay within speed and slow slew rates
+//     if(diff > 0) {
+//         if(cur_value < 1000) {
+//             if(diff > slow_rate)
+//                diff = slow_rate;
+//         } else
+//             if(diff > speed_rate)
+//                 diff = speed_rate;
+//     } else {
+//         if(cur_value > 1000) {
+//             if(diff < -slow_rate)
+//                 diff = -slow_rate; 
+//         } else
+//             if(diff < -speed_rate)
+//                 diff = -speed_rate;
+//     }
+
+//     // Push the new value over to the position function
+//     position(cur_value + diff);
+// }
+
+void command_serial(uint16_t value) // send serial command to BLD-305S motor driver
 {
-    int16_t speed_rate  = max_slew_speed;
-    int16_t slow_rate   = max_slew_slow; // value of 20 is 1 second full range at 50hz
-    uint16_t cur_value  =  lastpos;
-    int16_t diff        = (int)command_value - (int)cur_value;
-
-    // limit motor speed change to stay within speed and slow slew rates
-    if(diff > 0) {
-        if(cur_value < 1000) {
-            if(diff > slow_rate)
-               diff = slow_rate;
-        } else
-            if(diff > speed_rate)
-                diff = speed_rate;
+    //send command value (debug)
+    //SwSerial.write((byte)(value >> 8));  // Send high byte first //debug ----------------------------
+    //SwSerial.write((byte)(value & 0xFF)); // Send low byte second //debug ----------------------------
+    byte rawBytes[8];
+    if(value > 1000) {
+        byte rawBytes[8] = {0x01, 0x06, 0x00, 0x66, 0x00, 0x02, 0xE8, 0x14}; //start CCW rotation
+        SwSerial.write(rawBytes, 8);
+    } else if (value <1000) {
+        byte rawBytes[8] = {0x01, 0x06, 0x00, 0x66, 0x00, 0x01, 0xA8, 0x15}; //start CW rotation
+        SwSerial.write(rawBytes, 8);
     } else {
-        if(cur_value > 1000) {
-            if(diff < -slow_rate)
-                diff = -slow_rate;
-        } else
-            if(diff < -speed_rate)
-                diff = -speed_rate;
+        byte rawBytes[8] = {0x01, 0x06, 0x00, 0x66, 0x00, 0x00, 0x69, 0xD5}; //stop 
+        SwSerial.write(rawBytes, 8);
     }
-
-    // Push the new value over to the position function
-    position(cur_value + diff);
 }
 
 /*
  * This is where the magic happens. Receive a command value and drive the corresponding motor controller
  * using the desired pwm setting.
  */
-
-void position(uint16_t value)
-{
-  // store the new value as the new last position, used by update_command()
-  lastpos = value;
-  int16_t newValue = abs((int)value - 1000);
+// void position(uint16_t value)
+// {
+//   // store the new value as the new last position, used by update_command()
+//   lastpos = value;
+//   int16_t newValue = abs((int)value - 1000);
   
-  // Determine if value is bigger or smaller than 1000 plus deadzone
-  if(value > 1000 + PWM_DEADBAND) {
-    // Turn PWM for CCW operation on and the other off
-    //analogWrite(RPWM_PIN, abs((int)value - 1000));
-    analogWrite(RPWM_PIN, (uint8_t)((255.0f/1000.0f) * (float)newValue));
-    analogWrite(LPWM_PIN, 0);
-  } else if(value < 1000 - PWM_DEADBAND) {
-    // Turn PWM for CW operation on and the other off
-    analogWrite(RPWM_PIN, 0);
-    //analogWrite(LPWM_PIN, abs((int)value - 1000));
-    analogWrite(LPWM_PIN, (uint8_t)((255.0f/1000.0f) * (float)newValue));
-  } else {
-      // Nothing to do. We got about 1000 and need to turn the breaks on and PWM off
-    analogWrite(RPWM_PIN, 0);
-    analogWrite(LPWM_PIN, 0);
-  }
+//   // Determine if value is bigger or smaller than 1000 plus deadzone
+//   if(value > 1000 + PWM_DEADBAND) {
+//     // Turn PWM for CCW operation on and the other off
+//     //analogWrite(RPWM_PIN, abs((int)value - 1000));
+//     analogWrite(RPWM_PIN, (uint8_t)((255.0f/1000.0f) * (float)newValue)); // scale to 0 to 255
+//     analogWrite(LPWM_PIN, 0);
+//   } else if(value < 1000 - PWM_DEADBAND) {
+//     // Turn PWM for CW operation on and the other off
+//     analogWrite(RPWM_PIN, 0);
+//     //analogWrite(LPWM_PIN, abs((int)value - 1000));
+//     analogWrite(LPWM_PIN, (uint8_t)((255.0f/1000.0f) * (float)newValue)); // scale to 0 to 255
+//   } else {
+//       // Nothing to do. We got about 1000 and need to turn the breaks on and PWM off
+//     analogWrite(RPWM_PIN, 0);
+//     analogWrite(LPWM_PIN, 0);
+//   }
   
-#ifndef DISABLE_DEBUGGING_DISPLAY
-  display_motor_PWM = newValue; 
-#endif
-}
+// #ifndef DISABLE_DEBUGGING_DISPLAY
+//   display_motor_PWM = newValue; 
+// #endif
+// }
 
 /*
  * Reset the rudder position back to center
  */
 void stop()
 {
-    position(1000);
+    command_serial(1000);
     command_value = 1000;
 }
 
@@ -287,9 +298,7 @@ void stop_starboard()
        stop();
 }
 
-/*
- * Stops the servo, sets the desired value to 1000 (center), opens the clutch and kills the LED
- */
+// Stops the servo, sets the desired value to 1000 (center), opens the clutch and kills the LED
 void disengage() // Will not be changed
 {
     stop();
@@ -519,6 +528,7 @@ void process_packet()
             // no starboard command if port fault
         else {
             command_value = value;
+            command_serial(value); // command BLD driver via serial
 #ifndef DISABLE_DEBUGGING_DISPLAY
             display_motor_command = value;
 #endif
@@ -612,12 +622,11 @@ void loop() // Must change
         if(flags & ENGAGED) {
             static uint8_t update_d;
             if(++update_d >= 4) {
-                update_command(); // run the update function at roughly 30hz
+                //update_command(); // deals with command slew limiting. Runs at 12.5Hz
                 update_d = 0;
             }
         }
-
-        timeout++;
+        timeout++; // increments every 20ms
         last_loop_cycle_millis = millis(); // Store the time from here to next iteration
     }
 
@@ -627,26 +636,18 @@ void loop() // Must change
       adc_filter_cycle_millis = millis(); // Store the time from here to next iteration
     }
 
-/*
- * If we're not ENGAGED (DISENGAGED), the system will slowly shut down
- */
-    if(timeout == 120)
+    // If we're not ENGAGED (DISENGAGED), the system will slowly shut down
+    if(timeout == 120) // 2.4 seconds (120 x 20ms)
         disengage();
 
-/*
- * And finally disengage the H-Bridge completely
- */
-    if(timeout >= 128) // detach 160 ms later so esc gets stop
+    // And finally disengage the H-Bridge completely
+    if(timeout >= 128) // detach 160 ms after the disengage happened, so esc gets stop
         detach();
 
 #ifndef DISABLE_DEBUGGING_DISPLAY
-
-  display_flags = flags;
-/*
- * Display update for status variables
- */
-  display_update();
-
+    display_flags = flags;
+    // Display update for status variables
+    display_update();
 #endif
 
     /*
@@ -687,14 +688,6 @@ void loop() // Must change
     }
 
 #ifndef DISABLE_ENDSTOPS
-    /*
-     * Todo: This looks like endstop switches to me. However, the endstops are being used to indicate a fault
-     * and the fault stops the the system and goes to center. Why would that make any sense at all? I hit
-     * the endstop, just don't move any further and ignore the commant unless you have to move away from
-     * the endstop.
-     * This only makes sense if these are actual fault pins. But there is no hint as to what these represent.
-     */
-    // test fault pins
     if(!digitalRead(PORT_FAULT_PIN)) {
         stop_port();
         flags |= PORT_PIN_FAULT;
@@ -728,12 +721,12 @@ void loop() // Must change
           stop_starboard();
           flags |= MIN_RUDDER_FAULT;
       } else
-          flags &= ~MIN_RUDDER_FAULT;
+          flags &= ~MIN_RUDDER_FAULT; // clear flag
       if((pos && v > rudder_max) || (!pos && v < rudder_max)) {
           stop_port();
           flags |= MAX_RUDDER_FAULT;
       } else
-          flags &= ~MAX_RUDDER_FAULT;
+          flags &= ~MAX_RUDDER_FAULT; // clear flag
           
       last_loop_rudder_millis = millis();
     }
@@ -807,8 +800,7 @@ void loop() // Must change
     // output 1 byte
     switch(out_sync_b) {
     case 0:
-        // match output rate to input rate
-        if(serialin < 4)
+        if(serialin < 4) // match output rate to input rate
             return;
 
         uint16_t v;
@@ -816,36 +808,42 @@ void loop() // Must change
 
         //  flags C R V C R ct C R mt flags  C  R  V  C  R EE  C  R mct flags  C  R  V  C  R  EE  C  R rr flags  C  R  V  C  R EE  C  R cc  C  R vc
         //  0     1 2 3 4 5  6 7 8  9    10 11 12 13 14 15 16 17 18  19    20 21 22 23 24 25  26 27 28 29    30 31 32 33 34 35 36 37 38 39 40 41 42
+        // R = rudder
+        // C = current
+        // V = voltage
+        // MT = motor temp
+        // CT = controller temp
+        // EE = EEPROM reads
         switch(out_sync_pos++) {
-        case 0: case 10: case 20: case 30:
+        case 0: case 10: case 20: case 30: // send flags
 #ifdef LOW_CURRENT
                 flags |= CURRENT_RANGE;
 #endif
             v = flags;
             code = FLAGS_CODE;
             break;
-        case 1: case 4: case 7: case 11: case 14: case 17: case 21: case 24: case 27: case 31: case 34: case 37: case 40:
+        case 1: case 4: case 7: case 11: case 14: case 17: case 21: case 24: case 27: case 31: case 34: case 37: case 40: // send current
             v = TakeAmps();
             code = CURRENT_CODE;
             serialin-=4; // fix current output rate to input rate
             break;
-        case 2: case 5: case 8: case 12: case 15: case 18: case 22: case 25: case 28: case 32: case 35: case 38: case 41:
+        case 2: case 5: case 8: case 12: case 15: case 18: case 22: case 25: case 28: case 32: case 35: case 38: case 41: // send rudder position
             v = TakeRudder();
             code = RUDDER_SENSE_CODE;
             break;
-        case 3: case 13: case 23: case 33:
+        case 3: case 13: case 23: case 33: // send voltage
             v = TakeVolts();
             code = VOLTAGE_CODE;
             break;
-        case 6:
+        case 6: // send controller temp
             v = TakeTemp(CONTROLLER_TEMP);
             code = CONTROLLER_TEMP_CODE;
             break;
-        case 9:
+        case 9: // send motor temp
             v = TakeTemp(MOTOR_TEMP);
             code = MOTOR_TEMP_CODE;
             break;
-        case 16: case 26: case 36: /* eeprom reads */
+        case 16: case 26: case 36: // eeprom reads 
             if(eeprom_read_addr != eeprom_read_end) {
                 uint8_t value;
                 if(eeprom_read_8(eeprom_read_addr, value)) {
